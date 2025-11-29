@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Vox
+Comment=Voice dictation for Linux
+Exec=vox
+Icon=@APP_ID@
+Terminal=false
+Type=Application
+Categories=Utility;Accessibility;
+Keywords=voice;dictation;speech;transcription;
+StartupNotify=true

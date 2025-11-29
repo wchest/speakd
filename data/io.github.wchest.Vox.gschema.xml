@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="io.github.wchest.Vox" path="/io/github/wchest/Vox/">
+
+    <key name="api-key" type="s">
+      <default>''</default>
+      <summary>Deepgram API key</summary>
+    </key>
+
+    <key name="listening-mode" type="s">
+      <default>'always-on'</default>
+      <choices>
+        <choice value='always-on'/>
+        <choice value='push-to-talk'/>
+        <choice value='toggle'/>
+      </choices>
+      <summary>Listening mode</summary>
+    </key>
+
+    <key name="output-mode" type="s">
+      <default>'clipboard'</default>
+      <choices>
+        <choice value='clipboard'/>
+        <choice value='insert'/>
+        <choice value='both'/>
+      </choices>
+      <summary>Output mode</summary>
+    </key>
+
+    <key name="vad-threshold" type="d">
+      <default>0.5</default>
+      <range min="0.1" max="0.9"/>
+      <summary>VAD sensitivity</summary>
+    </key>
+
+    <key name="silence-duration" type="i">
+      <default>1500</default>
+      <range min="500" max="5000"/>
+      <summary>Silence duration before finalizing (ms)</summary>
+    </key>
+
+    <key name="input-device" type="s">
+      <default>''</default>
+      <summary>Selected input device</summary>
+    </key>
+
+  </schema>
+</schemalist>

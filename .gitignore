@@ -1,0 +1,46 @@
+# Build directories
+build/
+builddir/
+_build/
+
+# Meson
+subprojects/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flatpak
+.flatpak-builder/
+*.flatpak
+repo/
+
+# Debug files
+*.log
+
+# Local configuration
+.env
+.envrc
+
+# Compiled schemas
+*.compiled
+
+# Backup files
+*.bak
+*.orig
+
+# Node (if using for development tools)
+node_modules/
+
+# Python (if using for scripts)
+__pycache__/
+*.py[cod]
+.venv/
+venv/

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gjs \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gir1.2-gtk-4.0 \
+            gir1.2-adw-1 \
+            meson \
+            ninja-build
+
+      - name: Build
+        run: |
+          meson setup build
+          meson compile -C build
+
+      - name: Validate desktop file
+        run: |
+          desktop-file-validate build/data/*.desktop || true
+
+      - name: Validate AppStream metadata
+        run: |
+          appstreamcli validate build/data/*.metainfo.xml || true
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-46
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: vox.flatpak
+          manifest-path: flatpak/io.github.wchest.Vox.yaml
+          cache-key: flatpak-builder-${{ github.sha }}

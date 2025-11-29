@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Vox</name>
+  <summary>Voice dictation for Linux</summary>
+  <description>
+    <p>
+      Vox is a native Linux voice dictation application that uses
+      Deepgram's streaming API for fast, accurate transcription.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Always-on listening with intelligent turn detection</li>
+      <li>Direct text injection at cursor position</li>
+      <li>Modern GNOME-native interface</li>
+      <li>Configurable VAD sensitivity</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+
+  <url type="homepage">https://github.com/wchest/vox</url>
+  <url type="bugtracker">https://github.com/wchest/vox/issues</url>
+
+  <developer id="io.github.wchest">
+    <name>Will</name>
+  </developer>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2024-01-01">
+      <description>
+        <p>Initial release</p>
+      </description>
+    </release>
+  </releases>
+</component>
