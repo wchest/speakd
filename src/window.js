@@ -247,12 +247,16 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         });
     }
 
-    _toggleListening() {
+    toggleListening() {
         if (this._isListening) {
             this._stopListening();
         } else {
             this._startListening();
         }
+    }
+
+    _toggleListening() {
+        this.toggleListening();
     }
 
     _startListening() {

@@ -1,4 +1,5 @@
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Gdk from 'gi://Gdk?version=4.0';
 
@@ -12,6 +13,13 @@ export const OutputService = GObject.registerClass({
     constructor(settings) {
         super();
         this._settings = settings;
+        this._typeMethodWarned = false;
+        this._detectEnvironment();
+    }
+
+    _detectEnvironment() {
+        this._isGnome = GLib.getenv('XDG_CURRENT_DESKTOP')?.toLowerCase().includes('gnome') || false;
+        this._isWayland = GLib.getenv('XDG_SESSION_TYPE') === 'wayland';
     }
 
     async output(text) {
@@ -71,19 +79,70 @@ export const OutputService = GObject.registerClass({
     }
 
     async typeText(text) {
-        // Use wtype for Wayland text injection
+        // Try wtype first (wlroots compositors like Sway, Hyprland)
         try {
             await this._runCommand(['wtype', '--', text]);
             console.log('Text typed via wtype');
-        } catch (error) {
-            // Try with delay for problematic applications
-            try {
-                await this._runCommand(['wtype', '-d', '10', '--', text]);
-                console.log('Text typed via wtype with delay');
-            } catch (delayError) {
-                throw new Error(`Text injection failed: ${error.message}`);
-            }
+            return;
+        } catch (wtypeError) {
+            // wtype doesn't work on GNOME - try alternatives
         }
+
+        // Try dotool (works everywhere, no daemon, but needs manual install)
+        try {
+            await this._runCommandWithStdin(['dotool'], `type ${text}`);
+            console.log('Text typed via dotool');
+            return;
+        } catch (dotoolError) {
+            // dotool not installed or no permissions
+        }
+
+        // Try ydotool (works on GNOME but requires ydotoold daemon)
+        try {
+            await this._runCommand(['ydotool', 'type', '--', text]);
+            console.log('Text typed via ydotool');
+            return;
+        } catch (ydotoolError) {
+            // ydotool not working
+        }
+
+        // Nothing worked - show error once
+        if (!this._typeMethodWarned) {
+            this._typeMethodWarned = true;
+            const msg = this._isGnome && this._isWayland
+                ? 'Type at Cursor requires dotool or ydotool on GNOME. Using clipboard instead.'
+                : 'Type at Cursor not available. Using clipboard instead.';
+            throw new Error(msg);
+        }
+        throw new Error('Type at Cursor not available');
+    }
+
+    _runCommandWithStdin(argv, input) {
+        return new Promise((resolve, reject) => {
+            try {
+                const proc = Gio.Subprocess.new(
+                    argv,
+                    Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+                );
+
+                proc.communicate_utf8_async(input, null, (proc, result) => {
+                    try {
+                        const [success, stdout, stderr] = proc.communicate_utf8_finish(result);
+                        const exitStatus = proc.get_exit_status();
+
+                        if (exitStatus === 0) {
+                            resolve(stdout);
+                        } else {
+                            reject(new Error(stderr || `Command failed with exit code ${exitStatus}`));
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
     _runCommand(argv) {
