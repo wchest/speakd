@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="io.github.wchest.Vox" path="/io/github/wchest/Vox/">
+  <schema id="io.github.wchest.Speakd" path="/io/github/wchest/Speakd/">
 
     <key name="api-key" type="s">
       <default>''</default>

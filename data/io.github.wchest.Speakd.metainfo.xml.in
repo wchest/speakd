@@ -4,11 +4,11 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
 
-  <name>Vox</name>
+  <name>Speakd</name>
   <summary>Voice dictation for Linux</summary>
   <description>
     <p>
-      Vox is a native Linux voice dictation application that uses
+      Speakd is a native Linux voice dictation application that uses
       Deepgram's streaming API for fast, accurate transcription.
     </p>
     <p>Features:</p>
@@ -22,8 +22,8 @@
 
   <launchable type="desktop-id">@APP_ID@.desktop</launchable>
 
-  <url type="homepage">https://github.com/wchest/vox</url>
-  <url type="bugtracker">https://github.com/wchest/vox/issues</url>
+  <url type="homepage">https://github.com/wchest/speakd</url>
+  <url type="bugtracker">https://github.com/wchest/speakd/issues</url>
 
   <developer id="io.github.wchest">
     <name>Will</name>

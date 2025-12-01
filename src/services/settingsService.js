@@ -1,4 +1,5 @@
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
 export const SettingsService = GObject.registerClass({
@@ -11,13 +12,19 @@ export const SettingsService = GObject.registerClass({
     constructor() {
         super();
 
+        this._configFile = GLib.build_filenamev([
+            GLib.get_user_config_dir(),
+            'speakd',
+            'settings.json'
+        ]);
+
         // Try to get schema from installed location or compile locally
         try {
             this._settings = new Gio.Settings({
-                schema_id: 'io.github.wchest.Vox',
+                schema_id: 'io.github.wchest.Speakd',
             });
         } catch (e) {
-            // For development, use a local schema
+            // For development, use a local config file
             console.log('Using development settings (GSettings schema not installed)');
             this._settings = null;
             this._devSettings = {
@@ -28,6 +35,46 @@ export const SettingsService = GObject.registerClass({
                 'silence-duration': 1500,
                 'input-device': '',
             };
+            this._loadDevSettings();
+        }
+    }
+
+    _loadDevSettings() {
+        try {
+            const file = Gio.File.new_for_path(this._configFile);
+            if (file.query_exists(null)) {
+                const [success, contents] = file.load_contents(null);
+                if (success) {
+                    const decoder = new TextDecoder();
+                    const json = decoder.decode(contents);
+                    const saved = JSON.parse(json);
+                    Object.assign(this._devSettings, saved);
+                    console.log('Loaded settings from', this._configFile);
+                }
+            }
+        } catch (e) {
+            console.log('Could not load settings:', e.message);
+        }
+    }
+
+    _saveDevSettings() {
+        try {
+            // Ensure directory exists
+            const dir = Gio.File.new_for_path(GLib.build_filenamev([
+                GLib.get_user_config_dir(),
+                'speakd'
+            ]));
+            if (!dir.query_exists(null)) {
+                dir.make_directory_with_parents(null);
+            }
+
+            const file = Gio.File.new_for_path(this._configFile);
+            const json = JSON.stringify(this._devSettings, null, 2);
+            file.replace_contents(json, null, false,
+                Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            console.log('Saved settings to', this._configFile);
+        } catch (e) {
+            console.error('Could not save settings:', e.message);
         }
     }
 
@@ -43,6 +90,7 @@ export const SettingsService = GObject.registerClass({
             this._settings.set_string(key, value);
         } else {
             this._devSettings[key] = value;
+            this._saveDevSettings();
         }
         this.emit('settings-changed', key);
         if (key === 'api-key') {
@@ -62,6 +110,7 @@ export const SettingsService = GObject.registerClass({
             this._settings.set_double(key, value);
         } else {
             this._devSettings[key] = value;
+            this._saveDevSettings();
         }
         this.emit('settings-changed', key);
     }
@@ -78,6 +127,7 @@ export const SettingsService = GObject.registerClass({
             this._settings.set_int(key, value);
         } else {
             this._devSettings[key] = value;
+            this._saveDevSettings();
         }
         this.emit('settings-changed', key);
     }

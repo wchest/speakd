@@ -1,4 +1,4 @@
-project('vox',
+project('speakd',
   version: '0.1.0',
   license: 'MIT',
   meson_version: '>= 0.59.0',
@@ -12,7 +12,7 @@ dependency('gtk4', version: '>= 4.6.0')
 dependency('libadwaita-1', version: '>= 1.2.0')
 
 # App ID
-app_id = 'io.github.wchest.Vox'
+app_id = 'io.github.wchest.Speakd'
 
 # Directories
 prefix = get_option('prefix')

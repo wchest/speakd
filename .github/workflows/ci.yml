@@ -51,6 +51,6 @@ jobs:
 
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: vox.flatpak
-          manifest-path: flatpak/io.github.wchest.Vox.yaml
+          bundle: speakd.flatpak
+          manifest-path: flatpak/io.github.wchest.Speakd.yaml
           cache-key: flatpak-builder-${{ github.sha }}

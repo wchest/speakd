@@ -1,7 +1,7 @@
 # Configure the launcher script
 configure_file(
   input: 'main.js',
-  output: 'vox',
+  output: 'speakd',
   configuration: {
     'APP_ID': app_id,
     'VERSION': meson.project_version(),
@@ -25,6 +25,8 @@ install_data(sources, install_dir: pkgdatadir)
 services = files(
   'services/settingsService.js',
   'services/audioService.js',
+  'services/deepgramService.js',
+  'services/outputService.js',
 )
 
 install_data(services, install_dir: pkgdatadir / 'services')

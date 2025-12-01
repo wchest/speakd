@@ -3,12 +3,12 @@ import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
-import { VoxWindow } from './window.js';
+import { SpeakdWindow } from './window.js';
 import { PreferencesDialog } from './preferences.js';
 import { SettingsService } from './services/settingsService.js';
 
-export const VoxApplication = GObject.registerClass(
-class VoxApplication extends Adw.Application {
+export const SpeakdApplication = GObject.registerClass(
+class SpeakdApplication extends Adw.Application {
 
     constructor(params = {}) {
         super(params);
@@ -36,7 +36,7 @@ class VoxApplication extends Adw.Application {
         let window = this.active_window;
 
         if (!window) {
-            window = new VoxWindow({
+            window = new SpeakdWindow({
                 application: this,
                 settings: this._settings,
             });
@@ -59,12 +59,12 @@ class VoxApplication extends Adw.Application {
 
     _showAbout() {
         const dialog = new Adw.AboutDialog({
-            application_name: 'Vox',
+            application_name: 'Speakd',
             application_icon: this.application_id,
             developer_name: 'Will',
             version: this._version,
-            website: 'https://github.com/wchest/vox',
-            issue_url: 'https://github.com/wchest/vox/issues',
+            website: 'https://github.com/wchest/speakd',
+            issue_url: 'https://github.com/wchest/speakd/issues',
             license_type: Gtk.License.MIT_X11,
             developers: ['Will'],
         });

@@ -1,8 +1,8 @@
-# Vox
+# Speakd
 
 Voice dictation for Linux, powered by Deepgram.
 
-![CI](https://github.com/wchest/vox/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/wchest/speakd/actions/workflows/ci.yml/badge.svg)
 
 ## Features
 
@@ -46,13 +46,13 @@ sudo meson install -C build
 ## Usage
 
 1. Get a free Deepgram API key at [console.deepgram.com](https://console.deepgram.com)
-2. Launch Vox and enter your API key
+2. Launch Speakd and enter your API key
 3. Select your microphone
 4. Start speaking!
 
 ## Configuration
 
-Settings are stored in GSettings under `io.github.wchest.Vox`.
+Settings are stored in GSettings under `io.github.wchest.Speakd`.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
@@ -67,10 +67,10 @@ Settings are stored in GSettings under `io.github.wchest.Vox`.
 # Run locally
 meson setup build
 meson compile -C build
-./build/src/vox
+./build/src/speakd
 
 # With debugging
-GJS_DEBUG_OUTPUT=stderr ./build/src/vox
+GJS_DEBUG_OUTPUT=stderr ./build/src/speakd
 ```
 
 ## Keyboard Shortcuts
