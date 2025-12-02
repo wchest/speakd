@@ -6,56 +6,30 @@
     "command": "speakd",
     "finish-args": [
         "--share=ipc",
-        "--socket=fallback-x11",
-        "--socket=wayland",
-        "--socket=pulseaudio",
         "--share=network",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--socket=pulseaudio",
         "--device=dri",
-        "--talk-name=org.freedesktop.Notifications",
-        "--talk-name=org.kde.StatusNotifierWatcher",
-        "--talk-name=com.canonical.AppMenu.Registrar"
+        "--talk-name=org.freedesktop.secrets"
     ],
     "cleanup": [
         "/include",
         "/lib/pkgconfig",
-        "/man",
-        "/share/doc",
-        "/share/gtk-doc",
-        "/share/man",
         "/share/pkgconfig",
+        "/share/man",
         "*.la",
         "*.a"
     ],
     "modules": [
         {
-            "name": "wl-clipboard",
-            "buildsystem": "meson",
-            "sources": [
-                {
-                    "type": "archive",
-                    "url": "https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz",
-                    "sha256": "6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb"
-                }
-            ]
-        },
-        {
-            "name": "wtype",
-            "buildsystem": "meson",
-            "sources": [
-                {
-                    "type": "archive",
-                    "url": "https://github.com/atx/wtype/archive/refs/tags/v0.4.tar.gz",
-                    "sha256": "a8c315fa3a5f2ee9f8e98ec8ab2fc1e3b9d8e4f6a9e7b4ccf6d8e9a7b3c2d1e0"
-                }
-            ]
-        },
-        {
             "name": "speakd",
             "buildsystem": "meson",
             "sources": [
                 {
-                    "type": "dir",
-                    "path": "."
+                    "type": "git",
+                    "url": "https://github.com/wchest/speakd.git",
+                    "branch": "main"
                 }
             ]
         }
