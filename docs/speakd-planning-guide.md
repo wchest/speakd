@@ -1,10 +1,10 @@
-# Vox - Voice Dictation for Linux
+# Speakd - Voice Dictation for Linux
 ## Technical & Product Planning Guide
 
 **Version:** 1.0  
 **Target Platform:** Ubuntu 22.04+, GNOME/Wayland  
 **License:** MIT (recommended for open source)  
-**Repository:** github.com/[your-org]/vox
+**Repository:** github.com/[your-org]/speakd
 
 ---
 
@@ -35,7 +35,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 ### 1.2 Solution
 
-**Vox** is a native Linux voice dictation application that:
+**Speakd** is a native Linux voice dictation application that:
 - Lives in the system tray, always ready
 - Uses Deepgram's streaming API for fast, accurate transcription
 - Employs local VAD for intelligent turn detection
@@ -44,7 +44,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 ### 1.3 Target Users
 
-| User Type | Needs | Vox Solution |
+| User Type | Needs | Speakd Solution |
 |-----------|-------|--------------|
 | **Writers/Bloggers** | Fast drafting, hands-free | Always-on mode, direct text injection |
 | **Developers** | Quick comments, documentation | Clipboard mode, configurable hotkeys |
@@ -66,7 +66,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  Welcome to Vox                     │
+│                  Welcome to Speakd                     │
 │                                                     │
 │  Voice dictation for Linux, powered by Deepgram    │
 │                                                     │
@@ -104,7 +104,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 ┌─────────────────────────────────────────────────────┐
 │                 You're All Set!                     │
 │                                                     │
-│  Vox is now running in your system tray.           │
+│  Speakd is now running in your system tray.           │
 │                                                     │
 │  🎤 Speak to dictate text                          │
 │  📋 Text will be copied to clipboard               │
@@ -119,7 +119,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Vox                                               [─] [□] [×]  │
+│  Speakd                                               [─] [□] [×]  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │                         🎤                                      │
@@ -147,11 +147,11 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 | State | Icon | Tooltip | Menu Options |
 |-------|------|---------|--------------|
-| **Idle** | 🎤 (gray) | "Vox - Click to start" | Start Listening, Settings, Quit |
-| **Listening** | 🎤 (blue) | "Vox - Listening..." | Pause, Settings, Quit |
-| **Transcribing** | 🎤 (green, pulsing) | "Vox - Transcribing..." | Pause, Settings, Quit |
-| **Paused** | 🎤 (orange) | "Vox - Paused" | Resume, Settings, Quit |
-| **Error** | 🎤 (red) | "Vox - Connection error" | Retry, Settings, Quit |
+| **Idle** | 🎤 (gray) | "Speakd - Click to start" | Start Listening, Settings, Quit |
+| **Listening** | 🎤 (blue) | "Speakd - Listening..." | Pause, Settings, Quit |
+| **Transcribing** | 🎤 (green, pulsing) | "Speakd - Transcribing..." | Pause, Settings, Quit |
+| **Paused** | 🎤 (orange) | "Speakd - Paused" | Resume, Settings, Quit |
+| **Error** | 🎤 (red) | "Speakd - Connection error" | Retry, Settings, Quit |
 
 ### 2.4 Settings Window
 
@@ -211,7 +211,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                              VOX APPLICATION                                │
+│                              SPEAKD APPLICATION                                │
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                            │
 │  ┌──────────────────────────────────────────────────────────────────────┐ │
@@ -225,7 +225,7 @@ Linux users lack a native, well-integrated voice dictation solution. Existing op
 │  ┌─────────▼────────────────▼────────────────▼────────────────▼─────────┐ │
 │  │                        APPLICATION LAYER                              │ │
 │  │  ┌───────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    VoxController (main.js)                     │   │ │
+│  │  │                    SpeakdController (main.js)                     │   │ │
 │  │  │  • State management (idle/listening/transcribing/paused)      │   │ │
 │  │  │  • Event coordination                                          │   │ │
 │  │  │  • Error handling & recovery                                   │   │ │
@@ -845,7 +845,7 @@ class OutputController {
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.example.Vox" path="/org/example/Vox/">
+  <schema id="org.example.Speakd" path="/org/example/Speakd/">
     
     <!-- General -->
     <key name="start-on-login" type="b">
@@ -936,7 +936,7 @@ class OutputController {
 
 #### Directory Structure
 ```
-vox/
+speakd/
 ├── src/
 │   ├── main.js                    # Application entry point
 │   ├── application.js             # GtkApplication subclass
@@ -961,25 +961,25 @@ vox/
 │       ├── constants.js           # App constants
 │       └── logger.js              # Logging utility
 ├── data/
-│   ├── org.example.Vox.gschema.xml    # GSettings schema
-│   ├── org.example.Vox.desktop        # Desktop entry
-│   ├── org.example.Vox.metainfo.xml   # AppStream metadata
-│   ├── org.example.Vox.svg            # App icon
+│   ├── org.example.Speakd.gschema.xml    # GSettings schema
+│   ├── org.example.Speakd.desktop        # Desktop entry
+│   ├── org.example.Speakd.metainfo.xml   # AppStream metadata
+│   ├── org.example.Speakd.svg            # App icon
 │   └── icons/
 │       ├── hicolor/
-│       │   ├── scalable/apps/org.example.Vox.svg
-│       │   └── symbolic/apps/org.example.Vox-symbolic.svg
+│       │   ├── scalable/apps/org.example.Speakd.svg
+│       │   └── symbolic/apps/org.example.Speakd-symbolic.svg
 │       └── status/
-│           ├── vox-idle-symbolic.svg
-│           ├── vox-listening-symbolic.svg
-│           ├── vox-transcribing-symbolic.svg
-│           └── vox-paused-symbolic.svg
+│           ├── speakd-idle-symbolic.svg
+│           ├── speakd-listening-symbolic.svg
+│           ├── speakd-transcribing-symbolic.svg
+│           └── speakd-paused-symbolic.svg
 ├── models/
 │   └── silero_vad.onnx            # VAD model (downloaded during build)
 ├── po/                             # Translations (future)
 │   └── POTFILES.in
 ├── flatpak/
-│   └── org.example.Vox.yaml       # Flatpak manifest
+│   └── org.example.Speakd.yaml       # Flatpak manifest
 ├── debian/                         # Debian packaging
 │   ├── control
 │   ├── rules
@@ -998,7 +998,7 @@ vox/
 
 ```meson
 # meson.build
-project('vox',
+project('speakd',
   version: '0.1.0',
   license: 'MIT',
   meson_version: '>= 0.59.0'
@@ -1014,7 +1014,7 @@ libadwaita_dep = dependency('libadwaita-1', version: '>= 1.2.0')
 gstreamer_dep = dependency('gstreamer-1.0')
 
 # Application ID
-app_id = 'org.example.Vox'
+app_id = 'org.example.Speakd'
 
 # Directories
 prefix = get_option('prefix')
@@ -1050,15 +1050,15 @@ import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
-import { VoxApplication } from './application.js';
+import { SpeakdApplication } from './application.js';
 
 // Initialize libraries
 pkg.initFormat();
-GLib.set_prgname('vox');
-GLib.set_application_name('Vox');
+GLib.set_prgname('speakd');
+GLib.set_application_name('Speakd');
 
 // Run application
-const app = new VoxApplication();
+const app = new SpeakdApplication();
 const exitCode = app.run([System.programInvocationName, ...ARGV]);
 System.exit(exitCode);
 ```
@@ -1070,19 +1070,19 @@ import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
-import { VoxWindow } from './window.js';
+import { SpeakdWindow } from './window.js';
 import { PreferencesDialog } from './preferences.js';
 import { TranscriptionController } from './controllers/transcriptionController.js';
 import { SettingsService } from './services/settingsService.js';
 
-export class VoxApplication extends Adw.Application {
+export class SpeakdApplication extends Adw.Application {
     static {
         GObject.registerClass(this);
     }
     
     constructor() {
         super({
-            application_id: 'org.example.Vox',
+            application_id: 'org.example.Speakd',
             flags: Gio.ApplicationFlags.DEFAULT_FLAGS,
         });
         
@@ -1107,7 +1107,7 @@ export class VoxApplication extends Adw.Application {
         let window = this.active_window;
         
         if (!window) {
-            window = new VoxWindow({
+            window = new SpeakdWindow({
                 application: this,
                 controller: this._controller,
                 settings: this._settings,
@@ -1162,7 +1162,7 @@ export class VoxApplication extends Adw.Application {
     
     _loadStyles() {
         const provider = new Gtk.CssProvider();
-        provider.load_from_resource('/org/example/Vox/style.css');
+        provider.load_from_resource('/org/example/Speakd/style.css');
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
             provider,
@@ -1180,10 +1180,10 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
-export class VoxWindow extends Adw.ApplicationWindow {
+export class SpeakdWindow extends Adw.ApplicationWindow {
     static {
         GObject.registerClass({
-            Template: 'resource:///org/example/Vox/ui/window.ui',
+            Template: 'resource:///org/example/Speakd/ui/window.ui',
             InternalChildren: [
                 'statusLabel',
                 'audioLevelBar',
@@ -1494,12 +1494,12 @@ export class TranscriptionController extends GObject.Object {
 ### 6.1 Flatpak Manifest
 
 ```yaml
-# flatpak/org.example.Vox.yaml
-app-id: org.example.Vox
+# flatpak/org.example.Speakd.yaml
+app-id: org.example.Speakd
 runtime: org.gnome.Platform
 runtime-version: '45'
 sdk: org.gnome.Sdk
-command: vox
+command: speakd
 
 finish-args:
   # Display access
@@ -1522,7 +1522,7 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   
   # Settings storage
-  - --filesystem=xdg-config/vox:create
+  - --filesystem=xdg-config/speakd:create
   
   # For clipboard
   - --env=WAYLAND_DISPLAY=wayland-0
@@ -1540,7 +1540,7 @@ modules:
   - name: silero-vad-model
     buildsystem: simple
     build-commands:
-      - install -Dm644 silero_vad.onnx /app/share/vox/models/silero_vad.onnx
+      - install -Dm644 silero_vad.onnx /app/share/speakd/models/silero_vad.onnx
     sources:
       - type: file
         url: https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx
@@ -1548,7 +1548,7 @@ modules:
         dest-filename: silero_vad.onnx
 
   # Main application
-  - name: vox
+  - name: speakd
     buildsystem: meson
     sources:
       - type: dir
@@ -1561,7 +1561,7 @@ modules:
 
 ```
 # debian/control
-Source: vox
+Source: speakd
 Section: utils
 Priority: optional
 Maintainer: Will <will@techchange.org>
@@ -1574,10 +1574,10 @@ Build-Depends:
     libgstreamer1.0-dev,
     gir1.2-gstreamer-1.0
 Standards-Version: 4.6.0
-Homepage: https://github.com/your-org/vox
+Homepage: https://github.com/your-org/speakd
 Rules-Requires-Root: no
 
-Package: vox
+Package: speakd
 Architecture: any
 Depends:
     ${shlibs:Depends},
@@ -1591,7 +1591,7 @@ Depends:
 Recommends:
     pipewire-audio
 Description: Voice dictation for Linux
- Vox is a native Linux voice dictation application that
+ Speakd is a native Linux voice dictation application that
  uses Deepgram's streaming API for fast, accurate transcription.
  .
  Features:
@@ -1654,8 +1654,8 @@ jobs:
       
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          manifest-path: flatpak/org.example.Vox.yaml
-          bundle: vox.flatpak
+          manifest-path: flatpak/org.example.Speakd.yaml
+          bundle: speakd.flatpak
 ```
 
 ```yaml
@@ -1685,8 +1685,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ../vox_*.deb
-            vox.flatpak
+            ../speakd_*.deb
+            speakd.flatpak
 ```
 
 ---
@@ -1768,7 +1768,7 @@ When working with Claude Code, use these prompts:
 
 **Starting a new session:**
 ```
-I'm building Vox, a voice dictation app for Linux. Here's the planning doc: [paste relevant section]
+I'm building Speakd, a voice dictation app for Linux. Here's the planning doc: [paste relevant section]
 
 Current status: [what's done]
 Goal for this session: [specific deliverable]
@@ -1990,8 +1990,8 @@ describe('TranscriptionController', () => {
 1. `meson.build` - Build system
 2. `src/main.js` - Entry point
 3. `src/application.js` - GtkApplication
-4. `data/org.example.Vox.gschema.xml` - Settings
-5. `data/org.example.Vox.desktop` - Desktop entry
+4. `data/org.example.Speakd.gschema.xml` - Settings
+5. `data/org.example.Speakd.desktop` - Desktop entry
 
 ### Important GJS Imports
 ```javascript
@@ -2011,10 +2011,10 @@ meson setup build
 meson compile -C build
 
 # Run
-./build/src/vox
+./build/src/speakd
 
 # Or with debugging
-GJS_DEBUG_OUTPUT=stderr GJS_DEBUG_TOPICS="JS ERROR;JS LOG" ./build/src/vox
+GJS_DEBUG_OUTPUT=stderr GJS_DEBUG_TOPICS="JS ERROR;JS LOG" ./build/src/speakd
 ```
 
 ---
