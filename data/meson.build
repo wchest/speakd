@@ -28,8 +28,11 @@ install_data(
   install_dir: datadir / 'glib-2.0' / 'schemas',
 )
 
-# Icons
-install_data(
-  app_id + '.svg',
-  install_dir: datadir / 'icons' / 'hicolor' / 'scalable' / 'apps',
-)
+# Icons (PNG at various sizes for crisp display)
+icon_sizes = ['48', '64', '128', '256', '512']
+foreach size : icon_sizes
+  install_data(
+    'icons' / 'hicolor' / size + 'x' + size / 'apps' / app_id + '.png',
+    install_dir: datadir / 'icons' / 'hicolor' / size + 'x' + size / 'apps',
+  )
+endforeach

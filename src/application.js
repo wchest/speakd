@@ -1,4 +1,5 @@
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
@@ -11,10 +12,38 @@ export const SpeakdApplication = GObject.registerClass(
 class SpeakdApplication extends Adw.Application {
 
     constructor(params = {}) {
-        super(params);
+        super({
+            ...params,
+            flags: Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
+        });
 
         this._version = params.version || '0.0.0';
         this._settings = new SettingsService();
+
+        // Register command-line options
+        this.add_main_option(
+            'toggle', 't'.charCodeAt(0),
+            GLib.OptionFlags.NONE,
+            GLib.OptionArg.NONE,
+            'Toggle listening on/off',
+            null
+        );
+
+        this.add_main_option(
+            'start', 's'.charCodeAt(0),
+            GLib.OptionFlags.NONE,
+            GLib.OptionArg.NONE,
+            'Start listening',
+            null
+        );
+
+        this.add_main_option(
+            'stop', 'x'.charCodeAt(0),
+            GLib.OptionFlags.NONE,
+            GLib.OptionArg.NONE,
+            'Stop listening',
+            null
+        );
 
         // Add actions
         const quitAction = new Gio.SimpleAction({ name: 'quit' });
@@ -30,6 +59,49 @@ class SpeakdApplication extends Adw.Application {
         preferencesAction.connect('activate', () => this._showPreferences());
         this.add_action(preferencesAction);
         this.set_accels_for_action('app.preferences', ['<Control>comma']);
+
+        // Toggle action (can be invoked via D-Bus)
+        const toggleAction = new Gio.SimpleAction({ name: 'toggle' });
+        toggleAction.connect('activate', () => this._toggleListening());
+        this.add_action(toggleAction);
+        this.set_accels_for_action('app.toggle', ['<Control>space']);
+    }
+
+    vfunc_command_line(commandLine) {
+        const options = commandLine.get_options_dict();
+
+        // Always activate first to ensure window exists
+        this.activate();
+
+        if (options.contains('toggle')) {
+            this._toggleListening();
+            return 0;
+        }
+
+        if (options.contains('start')) {
+            const window = this.active_window;
+            if (window && !window._isListening) {
+                window.toggleListening();
+            }
+            return 0;
+        }
+
+        if (options.contains('stop')) {
+            const window = this.active_window;
+            if (window && window._isListening) {
+                window.toggleListening();
+            }
+            return 0;
+        }
+
+        return 0;
+    }
+
+    _toggleListening() {
+        const window = this.active_window;
+        if (window) {
+            window.toggleListening();
+        }
     }
 
     vfunc_activate() {

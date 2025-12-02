@@ -10,6 +10,7 @@ configure_file(
   },
   install: true,
   install_dir: bindir,
+  install_mode: 'rwxr-xr-x',
 )
 
 # Install source files

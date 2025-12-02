@@ -1,8 +1,16 @@
-# Speakd
+<p align="center">
+  <img src="docs/logo.png" alt="Speakd" width="200">
+</p>
 
-Voice dictation for Linux, powered by Deepgram.
+<h1 align="center">Speakd</h1>
 
-![CI](https://github.com/wchest/speakd/actions/workflows/ci.yml/badge.svg)
+<p align="center">
+  Voice dictation for Linux, powered by Deepgram.
+</p>
+
+<p align="center">
+  <img src="https://github.com/wchest/speakd/actions/workflows/ci.yml/badge.svg" alt="CI">
+</p>
 
 ## Features
 
@@ -64,20 +72,33 @@ Settings are stored in GSettings under `io.github.wchest.Speakd`.
 ## Development
 
 ```bash
-# Run locally
-meson setup build
-meson compile -C build
-./build/src/speakd
+# Run directly from source (no build required)
+gjs -m src/main.js
 
-# With debugging
-GJS_DEBUG_OUTPUT=stderr ./build/src/speakd
+# Or build and install locally
+meson setup builddir
+meson compile -C builddir
+sudo meson install -C builddir
+
+# Run with debug output
+GJS_DEBUG_OUTPUT=stderr gjs -m src/main.js
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
+| `Ctrl+Space` | Toggle listening |
+| `Ctrl+,` | Preferences |
 | `Ctrl+Q` | Quit |
+
+### Global Hotkey
+
+To control Speakd from anywhere, set up a custom shortcut in GNOME Settings:
+1. Settings → Keyboard → Custom Shortcuts
+2. Add: **Command:** `speakd --toggle`, **Shortcut:** your choice (e.g., `Super+Shift+D`)
 
 ## License
 
