@@ -48,14 +48,21 @@ export const GlobalShortcutService = GObject.registerClass({
         }
     }
 
-    _getRequestPath() {
-        const sender = Gio.DBus.session.get_unique_name().replace(/^:/, '').replace(/\./g, '_');
-        return `/org/freedesktop/portal/desktop/request/${sender}/${this._requestCounter++}`;
+    // The portal reports request results on a path derived from our unique
+    // bus name and the handle_token — the two must match exactly
+    _makeRequest() {
+        const token = `speakd_req_${this._requestCounter++}`;
+        const sender = Gio.DBus.session.get_unique_name()
+            .replace(/^:/, '').replace(/\./g, '_');
+        return {
+            token,
+            path: `/org/freedesktop/portal/desktop/request/${sender}/${token}`,
+        };
     }
 
     _createSession() {
         return new Promise((resolve, reject) => {
-            const requestPath = this._getRequestPath();
+            const { token, path } = this._makeRequest();
             const sessionToken = `speakd_${Date.now()}`;
 
             // Watch for Response signal
@@ -63,15 +70,15 @@ export const GlobalShortcutService = GObject.registerClass({
                 PORTAL_BUS_NAME,
                 'org.freedesktop.portal.Request',
                 'Response',
-                requestPath,
+                path,
                 null,
                 Gio.DBusSignalFlags.NO_MATCH_RULE,
-                (connection, sender, path, iface, signal, params) => {
+                (connection, sender, objPath, iface, signal, params) => {
                     Gio.DBus.session.signal_unsubscribe(responseId);
 
                     const [response, results] = params.deep_unpack();
                     if (response === 0) {
-                        this._sessionPath = results.session_handle;
+                        this._sessionPath = results.session_handle.unpack();
                         console.log('GlobalShortcuts session created:', this._sessionPath);
                         this._subscribeToActivated();
                         this._bindShortcuts().then(resolve).catch(reject);
@@ -85,7 +92,7 @@ export const GlobalShortcutService = GObject.registerClass({
             this._proxy.call(
                 'CreateSession',
                 new GLib.Variant('(a{sv})', [{
-                    'handle_token': new GLib.Variant('s', `request_${this._requestCounter}`),
+                    'handle_token': new GLib.Variant('s', token),
                     'session_handle_token': new GLib.Variant('s', sessionToken),
                 }]),
                 Gio.DBusCallFlags.NONE,
@@ -124,7 +131,7 @@ export const GlobalShortcutService = GObject.registerClass({
 
     _bindShortcuts() {
         return new Promise((resolve, reject) => {
-            const requestPath = this._getRequestPath();
+            const { token, path } = this._makeRequest();
 
             // Define our shortcuts
             const shortcuts = [
@@ -149,10 +156,10 @@ export const GlobalShortcutService = GObject.registerClass({
                 PORTAL_BUS_NAME,
                 'org.freedesktop.portal.Request',
                 'Response',
-                requestPath,
+                path,
                 null,
                 Gio.DBusSignalFlags.NO_MATCH_RULE,
-                (connection, sender, path, iface, signal, params) => {
+                (connection, sender, objPath, iface, signal, params) => {
                     Gio.DBus.session.signal_unsubscribe(responseId);
 
                     const [response, results] = params.deep_unpack();
@@ -175,7 +182,7 @@ export const GlobalShortcutService = GObject.registerClass({
                     shortcutsVariant,
                     '', // parent_window
                     {
-                        'handle_token': new GLib.Variant('s', `request_${this._requestCounter}`),
+                        'handle_token': new GLib.Variant('s', token),
                     }
                 ]),
                 Gio.DBusCallFlags.NONE,
