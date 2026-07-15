@@ -1,12 +1,14 @@
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Gdk from 'gi://Gdk?version=4.0';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
 import { AudioService } from './services/audioService.js';
 import { DeepgramService } from './services/deepgramService.js';
 import { OutputService } from './services/outputService.js';
+import { UsageService } from './services/usageService.js';
 
 export const SpeakdWindow = GObject.registerClass(
 class SpeakdWindow extends Adw.ApplicationWindow {
@@ -19,16 +21,35 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         this._audioService = new AudioService(settings);
         this._deepgramService = new DeepgramService(settings);
         this._outputService = new OutputService(settings);
+        this._usageService = new UsageService(settings);
 
         this._isListening = false;
-        this._currentTranscript = '';
         this._finalTranscript = '';
+        this._pendingOutput = '';  // Accumulates text until speech ends
+        this._sessionOutput = '';  // Current dictation burst, kept whole on the clipboard
+        this._lastFlushTime = 0;
 
         this.set_default_size(400, 500);
         this.set_title('Speakd');
 
         this._buildUI();
         this._connectSignals();
+        this._setupKeyboardShortcuts();
+    }
+
+    _setupKeyboardShortcuts() {
+        const controller = new Gtk.EventControllerKey();
+        controller.connect('key-pressed', (controller, keyval, keycode, state) => {
+            const ctrlPressed = (state & Gdk.ModifierType.CONTROL_MASK) !== 0;
+            const isSpace = keyval === Gdk.KEY_space;
+
+            if (ctrlPressed && isSpace) {
+                this.toggleListening();
+                return true; // Event handled
+            }
+            return false;
+        });
+        this.add_controller(controller);
     }
 
     _buildUI() {
@@ -52,11 +73,10 @@ class SpeakdWindow extends Adw.ApplicationWindow {
             margin_end: 24,
         });
 
-        // Status icon
+        // App logo as status icon
         this._statusIcon = new Gtk.Image({
-            icon_name: 'audio-input-microphone-symbolic',
+            icon_name: 'io.github.wchest.Speakd',
             pixel_size: 96,
-            css_classes: ['dim-label'],
         });
         mainBox.append(this._statusIcon);
 
@@ -87,6 +107,16 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         this._levelBar.add_offset_value('high', 0.5);
         this._levelBar.add_offset_value('full', 0.75);
         mainBox.append(this._levelBar);
+
+        // Level info row showing current level and threshold
+        this._levelInfoLabel = new Gtk.Label({
+            label: '',
+            css_classes: ['dim-label', 'caption'],
+            margin_start: 48,
+            margin_end: 48,
+        });
+        mainBox.append(this._levelInfoLabel);
+        this._updateLevelInfo(0);
 
         // Start/Stop button
         this._toggleButton = new Gtk.Button({
@@ -135,6 +165,15 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         });
         mainBox.append(this._deviceLabel);
 
+        // Usage info
+        this._usageLabel = new Gtk.Label({
+            label: this._usageService.getUsageText(),
+            css_classes: ['dim-label', 'caption'],
+            halign: Gtk.Align.CENTER,
+            margin_top: 6,
+        });
+        mainBox.append(this._usageLabel);
+
         // Main layout with clamp for max width
         const clamp = new Adw.Clamp({
             maximum_size: 400,
@@ -159,13 +198,44 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         // Audio level updates
         this._audioService.connect('audio-level', (service, level) => {
             this._levelBar.set_value(level);
+            this._updateLevelInfo(level);
         });
 
-        // Audio data -> send to Deepgram
+        // Audio data -> send to Deepgram (connects on-demand) and track usage
         this._audioService.connect('audio-data', (service, data) => {
-            if (this._deepgramService.isConnected) {
-                this._deepgramService.sendAudio(data);
+            this._deepgramService.sendAudio(data);
+            this._usageService.trackAudio(data.length);
+        });
+
+        // VAD stopped streaming audio -> flush Deepgram's buffer so trailing
+        // words become final instead of hanging as interim results
+        this._audioService.connect('speech-end', () => {
+            this._deepgramService.finalize();
+        });
+
+        // A long quiet gap means a new dictation burst: start the clipboard
+        // fresh instead of accumulating stale text forever in always-on mode
+        this._audioService.connect('speech-start', () => {
+            const now = GLib.get_monotonic_time() / 1000;
+            const resetMs = this._settings?.clipboardSessionReset ?? 5000;
+            if (this._sessionOutput && now - this._lastFlushTime > resetMs) {
+                this._sessionOutput = '';
             }
+        });
+
+        // Usage updates
+        this._usageService.connect('usage-updated', () => {
+            this._usageLabel.set_label(this._usageService.getUsageText());
+        });
+
+        // Usage warning threshold
+        this._usageService.connect('warning-threshold', (service, percentage) => {
+            this._showUsageWarning(percentage);
+        });
+
+        // Usage limit reached
+        this._usageService.connect('limit-reached', () => {
+            this._onLimitReached();
         });
 
         // Audio errors
@@ -173,27 +243,26 @@ class SpeakdWindow extends Adw.ApplicationWindow {
             this._showError(`Audio: ${message}`);
         });
 
-        // Deepgram connection events
-        this._deepgramService.connect('connected', () => {
+        // Deepgram callbacks
+        this._deepgramService.onConnected = () => {
             this._onDeepgramConnected();
-        });
+        };
 
-        this._deepgramService.connect('disconnected', () => {
-            console.log('Deepgram disconnected');
+        this._deepgramService.onDisconnected = () => {
+            // Don't lose finals that never got a speech_final marker
+            this._flushPendingOutput();
             if (this._isListening) {
-                this._descriptionLabel.set_label('Reconnecting...');
+                this._statusLabel.set_label('Reconnecting...');
             }
-        });
+        };
 
-        // Deepgram transcript events
-        this._deepgramService.connect('transcript', (service, text, isFinal, speechFinal) => {
+        this._deepgramService.onTranscript = (text, isFinal, speechFinal) => {
             this._handleTranscript(text, isFinal, speechFinal);
-        });
+        };
 
-        // Deepgram errors
-        this._deepgramService.connect('error', (service, message) => {
+        this._deepgramService.onError = (message) => {
             this._showError(`Deepgram: ${message}`);
-        });
+        };
 
         // Output events
         this._outputService.connect('output-complete', (service, text) => {
@@ -206,34 +275,45 @@ class SpeakdWindow extends Adw.ApplicationWindow {
     }
 
     _handleTranscript(text, isFinal, speechFinal) {
-        if (text === '' && isFinal && speechFinal) {
-            // Utterance end - output the final transcript
-            if (this._currentTranscript.trim()) {
-                this._outputService.output(this._currentTranscript.trim());
-                this._finalTranscript += this._currentTranscript.trim() + '\n';
-                this._currentTranscript = '';
+        if (isFinal) {
+            if (text) {
+                // Accumulate final text
+                if (this._pendingOutput) {
+                    this._pendingOutput += ' ' + text;
+                } else {
+                    this._pendingOutput = text;
+                }
+                this._finalTranscript += text + '\n';
                 this._updateTranscriptDisplay();
             }
-            return;
-        }
-
-        if (isFinal) {
-            // Add to current transcript
-            this._currentTranscript += text + ' ';
 
             if (speechFinal) {
-                // Natural end of speech - output now
-                this._outputService.output(this._currentTranscript.trim());
-                this._finalTranscript += this._currentTranscript.trim() + '\n';
-                this._currentTranscript = '';
+                this._flushPendingOutput();
             }
+        } else if (text) {
+            // Interim - just display (gray)
+            this._updateTranscriptDisplay(text);
+        }
+    }
+
+    _flushPendingOutput() {
+        if (!this._pendingOutput) return;
+
+        if (this._sessionOutput) {
+            this._sessionOutput += ' ' + this._pendingOutput;
+        } else {
+            this._sessionOutput = this._pendingOutput;
         }
 
-        this._updateTranscriptDisplay(isFinal ? '' : text);
+        // Segment is typed at the cursor; clipboard gets the whole burst so
+        // a paste never loses earlier phrases
+        this._outputService.output(this._pendingOutput, this._sessionOutput);
+        this._pendingOutput = '';
+        this._lastFlushTime = GLib.get_monotonic_time() / 1000;
     }
 
     _updateTranscriptDisplay(interimText = '') {
-        let display = this._finalTranscript + this._currentTranscript;
+        let display = this._finalTranscript;
         if (interimText) {
             display += `<span alpha="50%">${interimText}</span>`;
         }
@@ -242,7 +322,7 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         // Auto-scroll to bottom (use idle to let GTK recalculate layout first)
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             const vadj = this._transcriptScroll.get_vadjustment();
-            vadj.set_value(vadj.get_upper());
+            vadj.set_value(vadj.get_upper() - vadj.get_page_size());
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -260,63 +340,53 @@ class SpeakdWindow extends Adw.ApplicationWindow {
     }
 
     _startListening() {
-        console.log('Start listening clicked');
-
         // Check for API key
         if (!this._settings?.hasApiKey) {
-            console.log('No API key configured');
             this._showError('Please configure your Deepgram API key in Preferences');
             return;
         }
 
-        console.log('API key found, connecting...');
-
-        // Update UI to connecting state
-        this._isListening = true;
-        this._statusIcon.set_css_classes(['accent']);
-        this._statusLabel.set_label('Connecting...');
-        this._descriptionLabel.set_label('Connecting to Deepgram...');
-        this._toggleButton.set_label('Stop');
-        this._toggleButton.set_css_classes(['destructive-action', 'pill']);
-
-        // Clear previous transcripts
-        this._currentTranscript = '';
-        this._finalTranscript = '';
-        this._updateTranscriptDisplay();
-
-        // Connect to Deepgram - audio will start when connected signal fires
-        this._deepgramService.start();
-    }
-
-    _onDeepgramConnected() {
-        console.log('Deepgram connected, now starting audio...');
-
-        if (!this._isListening) {
-            return;  // User stopped while connecting
+        // Check usage limit
+        if (this._usageService.isOverLimit()) {
+            this._showError('Monthly usage limit reached. Adjust in Preferences.');
+            return;
         }
 
         try {
+            // Connect to Deepgram first (stays connected with keepalive)
+            this._deepgramService.connect();
+
             // Start audio capture
             const deviceId = this._settings?.inputDevice || null;
-            console.log('Calling audioService.start with deviceId:', deviceId);
             this._audioService.start(deviceId);
-            console.log('Audio service started');
 
+            this._isListening = true;
+            this._toggleButton.set_label('Stop');
+            this._toggleButton.set_css_classes(['destructive-action', 'pill']);
             this._statusLabel.set_label('Listening...');
             this._descriptionLabel.set_label('Speak now');
+
+            // Clear previous transcript
+            this._finalTranscript = '';
+            this._pendingOutput = '';
+            this._sessionOutput = '';
+            this._updateTranscriptDisplay();
         } catch (error) {
             console.error('Failed to start audio:', error);
             this._showError(`Failed to start audio: ${error.message}`);
-            this._stopListening();
         }
     }
 
+    _onDeepgramConnected() {
+        this._statusLabel.set_label(this._isListening ? 'Listening...' : 'Connected');
+    }
+
     _stopListening() {
-        // Stop audio first
+        // Stop audio first (emits speech-end -> Finalize if mid-speech)
         this._audioService.stop();
 
-        // Finalize and disconnect Deepgram
-        this._deepgramService.finalize();
+        // Graceful close: CloseStream flushes remaining finals, which still
+        // arrive via onTranscript; onDisconnected flushes any leftover output
         this._deepgramService.disconnect();
 
         this._isListening = false;
@@ -325,11 +395,16 @@ class SpeakdWindow extends Adw.ApplicationWindow {
 
     _resetUI() {
         this._levelBar.set_value(0);
-        this._statusIcon.set_css_classes(['dim-label']);
+        // Logo keeps its own colors
         this._statusLabel.set_label('Ready');
         this._descriptionLabel.set_label('Click the button below to start listening');
         this._toggleButton.set_label('Start Listening');
         this._toggleButton.set_css_classes(['suggested-action', 'pill']);
+    }
+
+    _updateLevelInfo(level) {
+        const threshold = this._settings?.vadThreshold ?? 0.05;
+        this._levelInfoLabel.set_label(`Level: ${level.toFixed(2)} / Threshold: ${threshold.toFixed(2)}`);
     }
 
     _updateDeviceLabel() {
@@ -367,6 +442,46 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         this._toastOverlay.add_toast(toast);
     }
 
+    _showUsageWarning(percentage) {
+        const pct = Math.round(percentage * 100);
+        const dialog = new Adw.AlertDialog({
+            heading: 'Usage Warning',
+            body: `You've used ${pct}% of your monthly limit.\n\nCurrent usage: ${this._usageService.monthlyMinutes.toFixed(1)} minutes\nEstimated cost: $${this._usageService.getEstimatedCost().toFixed(3)}`,
+        });
+        dialog.add_response('continue', 'Continue');
+        dialog.add_response('stop', 'Stop Listening');
+        dialog.set_response_appearance('stop', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('continue');
+
+        dialog.connect('response', (dialog, response) => {
+            if (response === 'stop') {
+                this._stopListening();
+            }
+        });
+
+        dialog.present(this);
+    }
+
+    _onLimitReached() {
+        this._stopListening();
+
+        const dialog = new Adw.AlertDialog({
+            heading: 'Monthly Limit Reached',
+            body: `You've reached your monthly usage limit of ${this._settings.monthlyLimitMinutes.toFixed(0)} minutes.\n\nTo continue, increase your limit in Preferences or wait until next month.`,
+        });
+        dialog.add_response('ok', 'OK');
+        dialog.add_response('preferences', 'Open Preferences');
+        dialog.set_default_response('ok');
+
+        dialog.connect('response', (dialog, response) => {
+            if (response === 'preferences') {
+                this.get_application().activate_action('preferences', null);
+            }
+        });
+
+        dialog.present(this);
+    }
+
     _createMenu() {
         const menu = new Gio.Menu();
         menu.append('Preferences', 'app.preferences');
@@ -380,6 +495,7 @@ class SpeakdWindow extends Adw.ApplicationWindow {
         this._audioService.destroy();
         this._deepgramService.destroy();
         this._outputService.destroy();
+        this._usageService.destroy();
         return super.vfunc_close_request();
     }
 });

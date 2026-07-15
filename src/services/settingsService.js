@@ -31,9 +31,18 @@ export const SettingsService = GObject.registerClass({
                 'api-key': '',
                 'listening-mode': 'always-on',
                 'output-mode': 'clipboard',
-                'vad-threshold': 0.5,
+                'vad-threshold': 0.05,
                 'silence-duration': 1500,
                 'input-device': '',
+                'remote-desktop-restore-token': '',
+                'clipboard-session-reset': 5000,
+                // Usage tracking
+                'usage-minutes-month': 0.0,
+                'usage-minutes-session': 0.0,
+                'usage-reset-date': '',
+                'monthly-limit-minutes': 60.0,
+                'limit-warning-threshold': 0.8,
+                'hard-limit-enabled': false,
             };
             this._loadDevSettings();
         }
@@ -132,6 +141,23 @@ export const SettingsService = GObject.registerClass({
         this.emit('settings-changed', key);
     }
 
+    get_boolean(key) {
+        if (this._settings) {
+            return this._settings.get_boolean(key);
+        }
+        return this._devSettings[key] || false;
+    }
+
+    set_boolean(key, value) {
+        if (this._settings) {
+            this._settings.set_boolean(key, value);
+        } else {
+            this._devSettings[key] = value;
+            this._saveDevSettings();
+        }
+        this.emit('settings-changed', key);
+    }
+
     get apiKey() {
         return this.get_string('api-key');
     }
@@ -180,7 +206,72 @@ export const SettingsService = GObject.registerClass({
         this.set_string('input-device', value);
     }
 
+    get remoteDesktopRestoreToken() {
+        return this.get_string('remote-desktop-restore-token');
+    }
+
+    set remoteDesktopRestoreToken(value) {
+        this.set_string('remote-desktop-restore-token', value);
+    }
+
+    get clipboardSessionReset() {
+        return this.get_int('clipboard-session-reset');
+    }
+
+    set clipboardSessionReset(value) {
+        this.set_int('clipboard-session-reset', value);
+    }
+
     get hasApiKey() {
         return this.apiKey.length > 0;
+    }
+
+    // Usage tracking properties
+    get usageMinutesMonth() {
+        return this.get_double('usage-minutes-month');
+    }
+
+    set usageMinutesMonth(value) {
+        this.set_double('usage-minutes-month', value);
+    }
+
+    get usageMinutesSession() {
+        return this.get_double('usage-minutes-session');
+    }
+
+    set usageMinutesSession(value) {
+        this.set_double('usage-minutes-session', value);
+    }
+
+    get usageResetDate() {
+        return this.get_string('usage-reset-date');
+    }
+
+    set usageResetDate(value) {
+        this.set_string('usage-reset-date', value);
+    }
+
+    get monthlyLimitMinutes() {
+        return this.get_double('monthly-limit-minutes');
+    }
+
+    set monthlyLimitMinutes(value) {
+        this.set_double('monthly-limit-minutes', value);
+    }
+
+    get limitWarningThreshold() {
+        return this.get_double('limit-warning-threshold');
+    }
+
+    set limitWarningThreshold(value) {
+        this.set_double('limit-warning-threshold', value);
+    }
+
+    get hardLimitEnabled() {
+        return this.get_boolean('hard-limit-enabled');
+    }
+
+    set hardLimitEnabled(value) {
+        this.set_boolean('hard-limit-enabled', value);
     }
 });

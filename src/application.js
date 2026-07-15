@@ -7,6 +7,7 @@ import Adw from 'gi://Adw?version=1';
 import { SpeakdWindow } from './window.js';
 import { PreferencesDialog } from './preferences.js';
 import { SettingsService } from './services/settingsService.js';
+import { GlobalShortcutService } from './services/globalShortcutService.js';
 
 export const SpeakdApplication = GObject.registerClass(
 class SpeakdApplication extends Adw.Application {
@@ -65,6 +66,20 @@ class SpeakdApplication extends Adw.Application {
         toggleAction.connect('activate', () => this._toggleListening());
         this.add_action(toggleAction);
         this.set_accels_for_action('app.toggle', ['<Control>space']);
+
+        // Initialize global shortcuts service
+        this._globalShortcuts = new GlobalShortcutService(this.application_id);
+        this._globalShortcuts.connect('shortcut-activated', (service, shortcutId) => {
+            if (shortcutId === 'toggle-listening') {
+                this._toggleListening();
+            }
+        });
+        this._globalShortcuts.connect('ready', () => {
+            console.log('Global shortcuts ready');
+        });
+        this._globalShortcuts.connect('error', (service, message) => {
+            console.log('Global shortcuts unavailable:', message);
+        });
     }
 
     vfunc_command_line(commandLine) {

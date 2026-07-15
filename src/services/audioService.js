@@ -10,6 +10,8 @@ export const AudioService = GObject.registerClass({
     Signals: {
         'audio-data': { param_types: [GObject.TYPE_JSOBJECT] },
         'audio-level': { param_types: [GObject.TYPE_DOUBLE] },
+        'speech-start': {},
+        'speech-end': {},
         'error': { param_types: [GObject.TYPE_STRING] },
     },
 }, class AudioService extends GObject.Object {
@@ -21,9 +23,23 @@ export const AudioService = GObject.registerClass({
         this._pipeline = null;
         this._appsink = null;
         this._isCapturing = false;
-        this._levelTimeoutId = null;
         this._flushTimeoutId = null;
         this._audioBuffer = [];
+
+        // VAD state
+        this._isSpeaking = false;
+        this._silenceStartTime = 0;
+        this._preBuffer = [];  // Ring buffer of recent audio for context
+        this._preBufferDuration = 500;  // ms of audio to keep before speech starts
+        this._preBufferSamples = Math.floor((16000 * this._preBufferDuration) / 1000);
+    }
+
+    get vadThreshold() {
+        return this._settings?.vadThreshold ?? 0.05;
+    }
+
+    get silenceDuration() {
+        return this._settings?.silenceDuration ?? 1500;
     }
 
     getDevices() {
@@ -53,6 +69,11 @@ export const AudioService = GObject.registerClass({
         }
 
         try {
+            // Reset VAD state
+            this._isSpeaking = false;
+            this._silenceStartTime = 0;
+            this._preBuffer = [];
+
             this._createPipeline(deviceId);
             const ret = this._pipeline.set_state(Gst.State.PLAYING);
 
@@ -69,9 +90,20 @@ export const AudioService = GObject.registerClass({
     }
 
     _createPipeline(deviceId) {
+        // Build pulsesrc with optional device property
+        let pulsesrcStr = 'pulsesrc do-timestamp=true';
+        if (deviceId) {
+            // Escape quotes in device ID for safety
+            const escapedId = deviceId.replace(/"/g, '\\"');
+            pulsesrcStr += ` device="${escapedId}"`;
+            console.log('Using audio device:', deviceId);
+        } else {
+            console.log('Using default audio device');
+        }
+
         // Audio capture pipeline with pulsesrc -> appsink
         const pipelineStr = `
-            pulsesrc do-timestamp=true !
+            ${pulsesrcStr} !
             audioconvert !
             audioresample !
             audio/x-raw,format=S16LE,rate=16000,channels=1 !
@@ -117,7 +149,7 @@ export const AudioService = GObject.registerClass({
             }
         }
 
-        // Flush if we have audio
+        // Process if we have audio
         if (this._audioBuffer.length > 0) {
             const totalLength = this._audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
             const combined = new Int16Array(totalLength);
@@ -138,12 +170,74 @@ export const AudioService = GObject.registerClass({
             const normalized = Math.min(1, rms / 16384);
             this.emit('audio-level', normalized);
 
-            this.emit('audio-data', combined);
+            // VAD logic
+            this._processVAD(combined, normalized);
         }
     }
 
-    _flushAudioBuffer() {
-        this._processPendingSamples();
+    _processVAD(audioData, level) {
+        const threshold = this.vadThreshold;
+        const silenceMs = this.silenceDuration;
+        const now = GLib.get_monotonic_time() / 1000;  // Convert to ms
+
+        const isSpeech = level > threshold;
+
+        if (isSpeech) {
+            if (!this._isSpeaking) {
+                // Speech started - emit pre-buffer first for context
+                this._isSpeaking = true;
+                this._silenceStartTime = 0;
+                console.log('Speech started (level:', level.toFixed(3), ')');
+                this.emit('speech-start');
+
+                // Send pre-buffer (audio just before speech started)
+                if (this._preBuffer.length > 0) {
+                    const preBufferTotal = this._preBuffer.reduce((sum, c) => sum + c.length, 0);
+                    const preBufferCombined = new Int16Array(preBufferTotal);
+                    let off = 0;
+                    for (const chunk of this._preBuffer) {
+                        preBufferCombined.set(chunk, off);
+                        off += chunk.length;
+                    }
+                    this.emit('audio-data', preBufferCombined);
+                    this._preBuffer = [];
+                }
+            }
+
+            // Send current audio
+            this.emit('audio-data', audioData);
+            this._silenceStartTime = 0;
+
+        } else {
+            // Silence detected
+            if (this._isSpeaking) {
+                // Still send audio during short silence (for natural pauses)
+                this.emit('audio-data', audioData);
+
+                if (this._silenceStartTime === 0) {
+                    this._silenceStartTime = now;
+                } else if (now - this._silenceStartTime > silenceMs) {
+                    // Silence exceeded threshold - speech ended
+                    this._isSpeaking = false;
+                    console.log('Speech ended after', silenceMs, 'ms silence');
+                    this.emit('speech-end');
+                }
+            } else {
+                // Not speaking - add to pre-buffer ring
+                this._addToPreBuffer(audioData);
+            }
+        }
+    }
+
+    _addToPreBuffer(audioData) {
+        this._preBuffer.push(audioData);
+
+        // Trim pre-buffer to max size
+        let totalSamples = this._preBuffer.reduce((sum, c) => sum + c.length, 0);
+        while (totalSamples > this._preBufferSamples && this._preBuffer.length > 1) {
+            const removed = this._preBuffer.shift();
+            totalSamples -= removed.length;
+        }
     }
 
     _handleMessage(message) {
@@ -158,19 +252,19 @@ export const AudioService = GObject.registerClass({
     stop() {
         this._isCapturing = false;
 
-        if (this._levelTimeoutId) {
-            GLib.source_remove(this._levelTimeoutId);
-            this._levelTimeoutId = null;
-        }
-
         if (this._flushTimeoutId) {
             GLib.source_remove(this._flushTimeoutId);
             this._flushTimeoutId = null;
         }
 
-        // Flush any remaining audio
-        this._flushAudioBuffer();
+        // If we were speaking, emit end
+        if (this._isSpeaking) {
+            this._isSpeaking = false;
+            this.emit('speech-end');
+        }
+
         this._audioBuffer = [];
+        this._preBuffer = [];
 
         if (this._pipeline) {
             this._pipeline.set_state(Gst.State.NULL);
@@ -194,6 +288,10 @@ export const AudioService = GObject.registerClass({
 
     get isCapturing() {
         return this._isCapturing;
+    }
+
+    get isSpeaking() {
+        return this._isSpeaking;
     }
 
     destroy() {

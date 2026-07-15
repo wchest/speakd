@@ -3,6 +3,8 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Gdk from 'gi://Gdk?version=4.0';
 
+import { TypingPortalService } from './typingPortalService.js';
+
 export const OutputService = GObject.registerClass({
     Signals: {
         'output-complete': { param_types: [GObject.TYPE_STRING] },
@@ -14,6 +16,7 @@ export const OutputService = GObject.registerClass({
         super();
         this._settings = settings;
         this._typeMethodWarned = false;
+        this._typingPortal = new TypingPortalService(settings);
         this._detectEnvironment();
     }
 
@@ -22,20 +25,25 @@ export const OutputService = GObject.registerClass({
         this._isWayland = GLib.getenv('XDG_SESSION_TYPE') === 'wayland';
     }
 
-    async output(text) {
+    async output(text, sessionText = '') {
         if (!text || text.trim().length === 0) {
             return;
         }
 
+        // Add trailing space so consecutive utterances flow together
+        const outputText = text + ' ';
+        // Clipboard holds the whole session so a paste never loses earlier
+        // phrases; typing inserts only the new segment
+        const clipboardText = (sessionText || text) + ' ';
         const mode = this._settings?.outputMode || 'clipboard';
 
         try {
             if (mode === 'clipboard' || mode === 'both') {
-                await this.copyToClipboard(text);
+                await this.copyToClipboard(clipboardText);
             }
 
             if (mode === 'insert' || mode === 'both') {
-                await this.typeText(text);
+                await this.typeText(outputText);
             }
 
             this.emit('output-complete', text);
@@ -46,7 +54,7 @@ export const OutputService = GObject.registerClass({
             // Fallback to clipboard if typing fails
             if (mode === 'insert') {
                 try {
-                    await this.copyToClipboard(text);
+                    await this.copyToClipboard(clipboardText);
                     console.log('Fell back to clipboard');
                 } catch (clipError) {
                     console.error('Clipboard fallback also failed:', clipError);
@@ -79,7 +87,17 @@ export const OutputService = GObject.registerClass({
     }
 
     async typeText(text) {
-        // Try wtype first (wlroots compositors like Sway, Hyprland)
+        // Try the RemoteDesktop portal first — the only method that works on
+        // GNOME Wayland (one-time permission dialog, then silent)
+        try {
+            await this._typingPortal.typeText(text);
+            console.log('Text typed via RemoteDesktop portal');
+            return;
+        } catch (portalError) {
+            console.log('Portal typing unavailable:', portalError.message);
+        }
+
+        // Try wtype (wlroots compositors like Sway, Hyprland)
         try {
             await this._runCommand(['wtype', '--', text]);
             console.log('Text typed via wtype');
@@ -110,7 +128,7 @@ export const OutputService = GObject.registerClass({
         if (!this._typeMethodWarned) {
             this._typeMethodWarned = true;
             const msg = this._isGnome && this._isWayland
-                ? 'Type at Cursor requires dotool or ydotool on GNOME. Using clipboard instead.'
+                ? 'Type at Cursor needs portal permission (or dotool/ydotool). Using clipboard instead.'
                 : 'Type at Cursor not available. Using clipboard instead.';
             throw new Error(msg);
         }
@@ -174,6 +192,6 @@ export const OutputService = GObject.registerClass({
     }
 
     destroy() {
-        // Nothing to clean up
+        this._typingPortal.destroy();
     }
 });

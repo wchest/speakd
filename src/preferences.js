@@ -1,5 +1,6 @@
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
+import Gst from 'gi://Gst';
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 
@@ -11,9 +12,14 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         super(parentParams);
 
         this._settings = settings;
+        this._devices = [];  // Store device list with {id, name}
+        this._isLoading = true;  // Prevent saving during initial load
 
         this._buildUI();
+        this._loadDevices();
         this._loadSettings();
+
+        this._isLoading = false;
     }
 
     _buildUI() {
@@ -59,6 +65,81 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         validateButton.connect('clicked', () => this._validateApiKey());
         this._apiStatusRow.add_suffix(validateButton);
 
+        // Usage & Limits Group
+        const usageGroup = new Adw.PreferencesGroup({
+            title: 'Usage and Limits',
+            description: 'Monitor and control your API usage',
+        });
+        deepgramPage.add(usageGroup);
+
+        // Current Usage Display
+        this._usageRow = new Adw.ActionRow({
+            title: 'Current Usage',
+            subtitle: 'Loading...',
+        });
+        usageGroup.add(this._usageRow);
+
+        // Monthly Limit
+        this._limitRow = new Adw.SpinRow({
+            title: 'Monthly Limit',
+            subtitle: 'Minutes per month (0 = unlimited)',
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 10000,
+                step_increment: 10,
+                page_increment: 60,
+                value: 60,
+            }),
+        });
+        this._limitRow.connect('notify::value', () => this._onLimitChanged());
+        usageGroup.add(this._limitRow);
+
+        // Warning Threshold
+        this._warningRow = new Adw.ActionRow({
+            title: 'Warning Threshold',
+            subtitle: 'Show warning at this percentage',
+        });
+        this._warningScale = new Gtk.Scale({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            adjustment: new Gtk.Adjustment({
+                lower: 0.5,
+                upper: 1.0,
+                step_increment: 0.05,
+                page_increment: 0.1,
+            }),
+            hexpand: true,
+            valign: Gtk.Align.CENTER,
+            draw_value: true,
+            digits: 0,
+        });
+        this._warningScale.set_format_value_func((scale, value) => `${Math.round(value * 100)}%`);
+        this._warningScale.set_size_request(150, -1);
+        this._warningScale.connect('value-changed', () => this._onWarningChanged());
+        this._warningRow.add_suffix(this._warningScale);
+        usageGroup.add(this._warningRow);
+
+        // Hard Limit Toggle
+        this._hardLimitRow = new Adw.SwitchRow({
+            title: 'Enforce Limit',
+            subtitle: 'Stop transcription when limit is reached',
+        });
+        this._hardLimitRow.connect('notify::active', () => this._onHardLimitChanged());
+        usageGroup.add(this._hardLimitRow);
+
+        // Reset Usage Button
+        const resetRow = new Adw.ActionRow({
+            title: 'Reset Monthly Usage',
+            subtitle: 'Clear usage counter for this month',
+        });
+        const resetButton = new Gtk.Button({
+            label: 'Reset',
+            css_classes: ['destructive-action'],
+            valign: Gtk.Align.CENTER,
+        });
+        resetButton.connect('clicked', () => this._resetUsage());
+        resetRow.add_suffix(resetButton);
+        usageGroup.add(resetRow);
+
         // Audio Page
         const audioPage = new Adw.PreferencesPage({
             title: 'Audio',
@@ -78,14 +159,20 @@ class PreferencesDialog extends Adw.PreferencesDialog {
             subtitle: 'Select your input device',
         });
 
-        // Placeholder devices for now
-        const deviceModel = new Gtk.StringList();
-        deviceModel.append('Default');
-        deviceModel.append('Built-in Microphone');
-        deviceModel.append('USB Microphone');
-        this._deviceRow.set_model(deviceModel);
+        // Model will be populated by _loadDevices()
+        this._deviceModel = new Gtk.StringList();
+        this._deviceRow.set_model(this._deviceModel);
         this._deviceRow.connect('notify::selected', () => this._onDeviceChanged());
         inputGroup.add(this._deviceRow);
+
+        // Refresh button
+        const refreshButton = new Gtk.Button({
+            icon_name: 'view-refresh-symbolic',
+            valign: Gtk.Align.CENTER,
+            tooltip_text: 'Refresh device list',
+        });
+        refreshButton.connect('clicked', () => this._loadDevices());
+        this._deviceRow.add_suffix(refreshButton);
 
         // VAD Settings Group
         const vadGroup = new Adw.PreferencesGroup({
@@ -96,21 +183,21 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         // VAD Threshold
         this._vadRow = new Adw.ActionRow({
             title: 'Sensitivity',
-            subtitle: 'Higher values require louder speech',
+            subtitle: 'Audio level treated as speech — lower picks up quieter voices',
         });
 
         this._vadScale = new Gtk.Scale({
             orientation: Gtk.Orientation.HORIZONTAL,
             adjustment: new Gtk.Adjustment({
-                lower: 0.1,
-                upper: 0.9,
-                step_increment: 0.1,
-                page_increment: 0.1,
+                lower: 0.01,
+                upper: 0.5,
+                step_increment: 0.01,
+                page_increment: 0.05,
             }),
             hexpand: true,
             valign: Gtk.Align.CENTER,
             draw_value: true,
-            digits: 1,
+            digits: 2,
         });
         this._vadScale.set_size_request(200, -1);
         this._vadScale.connect('value-changed', () => this._onVadChanged());
@@ -120,7 +207,7 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         // Silence Duration
         this._silenceRow = new Adw.SpinRow({
             title: 'Silence Duration',
-            subtitle: 'Milliseconds of silence before finalizing',
+            subtitle: 'Milliseconds of silence before audio streaming pauses (saves cost)',
             adjustment: new Gtk.Adjustment({
                 lower: 500,
                 upper: 5000,
@@ -171,6 +258,21 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         this._outputModeRow.set_model(outputModel);
         this._outputModeRow.connect('notify::selected', () => this._onOutputModeChanged());
         outputGroup.add(this._outputModeRow);
+
+        // Clipboard Session Reset
+        this._clipboardResetRow = new Adw.SpinRow({
+            title: 'Clipboard Reset',
+            subtitle: 'Milliseconds of quiet before the clipboard starts fresh',
+            adjustment: new Gtk.Adjustment({
+                lower: 1000,
+                upper: 60000,
+                step_increment: 500,
+                page_increment: 5000,
+                value: 5000,
+            }),
+        });
+        this._clipboardResetRow.connect('notify::value', () => this._onClipboardResetChanged());
+        outputGroup.add(this._clipboardResetRow);
     }
 
     _loadSettings() {
@@ -182,6 +284,12 @@ class PreferencesDialog extends Adw.PreferencesDialog {
             this._apiKeyRow.set_text(apiKey);
             this._updateApiStatus(true);
         }
+
+        // Load usage settings
+        this._updateUsageDisplay();
+        this._limitRow.set_value(this._settings.monthlyLimitMinutes);
+        this._warningScale.set_value(this._settings.limitWarningThreshold);
+        this._hardLimitRow.set_active(this._settings.hardLimitEnabled);
 
         // Load VAD settings
         this._vadScale.set_value(this._settings.vadThreshold);
@@ -200,6 +308,12 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         if (outputIndex >= 0) {
             this._outputModeRow.set_selected(outputIndex);
         }
+
+        // Load clipboard session reset
+        this._clipboardResetRow.set_value(this._settings.clipboardSessionReset);
+
+        // Load input device (after devices are loaded)
+        this._selectCurrentDevice();
     }
 
     _onApiKeyChanged() {
@@ -248,11 +362,65 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         }, 1000);
     }
 
+    _loadDevices() {
+        // Clear existing items
+        while (this._deviceModel.get_n_items() > 0) {
+            this._deviceModel.remove(0);
+        }
+        this._devices = [];
+
+        // Add default option
+        this._devices.push({ id: '', name: 'Default (System)' });
+        this._deviceModel.append('Default (System)');
+
+        // Get audio input devices from GStreamer
+        try {
+            const monitor = new Gst.DeviceMonitor();
+            monitor.add_filter('Audio/Source', null);
+            monitor.start();
+
+            const deviceList = monitor.get_devices();
+            for (let i = 0; i < deviceList.length; i++) {
+                const device = deviceList[i];
+                const displayName = device.get_display_name();
+                const props = device.get_properties();
+                const deviceId = props ? (props.get_string('node.name') || displayName) : displayName;
+
+                this._devices.push({ id: deviceId, name: displayName });
+                this._deviceModel.append(displayName);
+            }
+
+            monitor.stop();
+        } catch (e) {
+            console.error('Failed to enumerate audio devices:', e);
+        }
+
+        // Select currently configured device (only if not during initial load)
+        if (!this._isLoading) {
+            this._selectCurrentDevice();
+        }
+    }
+
+    _selectCurrentDevice() {
+        if (!this._settings) return;
+
+        const currentId = this._settings.inputDevice;
+        const index = this._devices.findIndex(d => d.id === currentId);
+        if (index >= 0) {
+            this._deviceRow.set_selected(index);
+        } else {
+            this._deviceRow.set_selected(0);  // Default
+        }
+    }
+
     _onDeviceChanged() {
+        if (this._isLoading) return;  // Don't save during initial load
+
         const selected = this._deviceRow.get_selected();
-        const devices = ['', 'built-in', 'usb'];
-        if (this._settings && selected < devices.length) {
-            this._settings.inputDevice = devices[selected];
+        if (this._settings && selected < this._devices.length) {
+            const device = this._devices[selected];
+            this._settings.inputDevice = device.id;
+            console.log('Selected device:', device.name, '(', device.id, ')');
         }
     }
 
@@ -284,8 +452,72 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         }
     }
 
+    _onClipboardResetChanged() {
+        if (this._settings) {
+            this._settings.clipboardSessionReset = this._clipboardResetRow.get_value();
+        }
+    }
+
     _showToast(message) {
         const toast = new Adw.Toast({ title: message });
         this.add_toast(toast);
+    }
+
+    _updateUsageDisplay() {
+        if (!this._settings) return;
+
+        const usage = this._settings.usageMinutesMonth;
+        const limit = this._settings.monthlyLimitMinutes;
+        const cost = usage * 0.0077; // Nova-3 streaming price per minute
+
+        let subtitle = `${usage.toFixed(1)} minutes (~$${cost.toFixed(3)})`;
+        if (limit > 0) {
+            const pct = Math.round((usage / limit) * 100);
+            subtitle += ` • ${pct}% of limit`;
+        }
+
+        this._usageRow.set_subtitle(subtitle);
+    }
+
+    _onLimitChanged() {
+        if (this._settings) {
+            this._settings.monthlyLimitMinutes = this._limitRow.get_value();
+            this._updateUsageDisplay();
+        }
+    }
+
+    _onWarningChanged() {
+        if (this._settings) {
+            this._settings.limitWarningThreshold = this._warningScale.get_value();
+        }
+    }
+
+    _onHardLimitChanged() {
+        if (this._settings) {
+            this._settings.hardLimitEnabled = this._hardLimitRow.get_active();
+        }
+    }
+
+    _resetUsage() {
+        if (!this._settings) return;
+
+        const dialog = new Adw.AlertDialog({
+            heading: 'Reset Usage?',
+            body: 'This will reset your monthly usage counter to zero. This action cannot be undone.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('reset', 'Reset');
+        dialog.set_response_appearance('reset', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('cancel');
+
+        dialog.connect('response', (dialog, response) => {
+            if (response === 'reset') {
+                this._settings.usageMinutesMonth = 0;
+                this._updateUsageDisplay();
+                this._showToast('Usage counter reset');
+            }
+        });
+
+        dialog.present(this);
     }
 });

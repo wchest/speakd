@@ -28,6 +28,9 @@ services = files(
   'services/audioService.js',
   'services/deepgramService.js',
   'services/outputService.js',
+  'services/usageService.js',
+  'services/globalShortcutService.js',
+  'services/typingPortalService.js',
 )
 
 install_data(services, install_dir: pkgdatadir / 'services')
