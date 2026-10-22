@@ -16,6 +16,7 @@ export const OutputService = GObject.registerClass({
         super();
         this._settings = settings;
         this._typeMethodWarned = false;
+        this._clipboardProc = null;
         this._typingPortal = new TypingPortalService(settings);
         this._detectEnvironment();
     }
@@ -66,7 +67,7 @@ export const OutputService = GObject.registerClass({
     async copyToClipboard(text) {
         // Try wl-copy first (more reliable on Wayland)
         try {
-            await this._runCommand(['wl-copy', '--', text]);
+            await this._wlCopy(text);
             console.log('Copied to clipboard via wl-copy');
             return;
         } catch (error) {
@@ -84,6 +85,62 @@ export const OutputService = GObject.registerClass({
         } catch (error) {
             throw new Error(`Clipboard failed: ${error.message}`);
         }
+    }
+
+    // wl-copy owns the selection for as long as it runs. Left to itself it
+    // forks a daemon we can never reach again, so an always-on session leaks
+    // one process per flush. Keep it in the foreground, hold the handle, and
+    // retire the previous owner once the new one has the text. The text goes
+    // over stdin rather than argv so transcripts stay out of `ps` output.
+    _wlCopy(text) {
+        return new Promise((resolve, reject) => {
+            let proc;
+            try {
+                proc = Gio.Subprocess.new(
+                    ['wl-copy', '--foreground'],
+                    Gio.SubprocessFlags.STDIN_PIPE |
+                    Gio.SubprocessFlags.STDOUT_SILENCE |
+                    Gio.SubprocessFlags.STDERR_SILENCE
+                );
+            } catch (error) {
+                reject(error);
+                return;
+            }
+
+            const stdin = proc.get_stdin_pipe();
+            const bytes = GLib.Bytes.new(new TextEncoder().encode(text));
+
+            stdin.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null, (stream, result) => {
+                try {
+                    stream.write_bytes_finish(result);
+                    stream.close(null);
+                } catch (error) {
+                    proc.force_exit();
+                    reject(error);
+                    return;
+                }
+
+                // The new owner has the data; drop the one it replaced.
+                this._retireClipboardOwner();
+                this._clipboardProc = proc;
+                proc.wait_async(null, () => {
+                    if (this._clipboardProc === proc)
+                        this._clipboardProc = null;
+                });
+                resolve();
+            });
+        });
+    }
+
+    _retireClipboardOwner() {
+        if (!this._clipboardProc)
+            return;
+        try {
+            this._clipboardProc.force_exit();
+        } catch (error) {
+            // Already gone - the compositor took the selection elsewhere.
+        }
+        this._clipboardProc = null;
     }
 
     async typeText(text) {
@@ -192,6 +249,8 @@ export const OutputService = GObject.registerClass({
     }
 
     destroy() {
+        // Deliberately leave the last wl-copy running: it *is* the clipboard,
+        // so killing it here would empty the selection on quit.
         this._typingPortal.destroy();
     }
 });
