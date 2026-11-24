@@ -384,6 +384,7 @@ class SpeakdWindow extends Adw.ApplicationWindow {
     _stopListening() {
         // Stop audio first (emits speech-end -> Finalize if mid-speech)
         this._audioService.stop();
+        this._usageService.flush();
 
         // Graceful close: CloseStream flushes remaining finals, which still
         // arrive via onTranscript; onDisconnected flushes any leftover output

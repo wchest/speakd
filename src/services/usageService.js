@@ -4,6 +4,11 @@ import GLib from 'gi://GLib';
 // Deepgram Nova-3 streaming pricing per minute
 const PRICE_PER_MINUTE = 0.0077;
 
+// How often buffered usage is persisted to GSettings. trackAudio() fires for
+// every audio chunk (~20x/sec); writing each one floods dconf-service, which
+// grows without bound over a long-running session.
+const FLUSH_INTERVAL_SECONDS = 5;
+
 export const UsageService = GObject.registerClass({
     Signals: {
         'usage-updated': { param_types: [GObject.TYPE_DOUBLE, GObject.TYPE_DOUBLE] }, // session, month
@@ -17,6 +22,10 @@ export const UsageService = GObject.registerClass({
 
         this._settings = settings;
         this._sessionMinutes = 0;
+        // Monthly minutes tracked but not yet written to settings. Kept as a
+        // delta so an external reset (Preferences) is respected on flush.
+        this._pendingMonthMinutes = 0;
+        this._flushSourceId = 0;
         this._warningShown = false;
 
         // Check for monthly reset on startup
@@ -48,21 +57,46 @@ export const UsageService = GObject.registerClass({
         const minutes = seconds / 60;
 
         this._sessionMinutes += minutes;
-        this._settings.usageMinutesSession = this._sessionMinutes;
-        this._settings.usageMinutesMonth += minutes;
+        this._pendingMonthMinutes += minutes;
+        this._scheduleFlush();
 
         // Check limits
         this._checkLimits();
 
         // Emit update signal
-        this.emit('usage-updated', this._sessionMinutes, this._settings.usageMinutesMonth);
+        this.emit('usage-updated', this._sessionMinutes, this.monthlyMinutes);
+    }
+
+    _scheduleFlush() {
+        if (this._flushSourceId)
+            return;
+        this._flushSourceId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, FLUSH_INTERVAL_SECONDS, () => {
+            this._flushSourceId = 0;
+            this.flush();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /**
+     * Persist buffered usage to settings
+     */
+    flush() {
+        if (this._flushSourceId) {
+            GLib.source_remove(this._flushSourceId);
+            this._flushSourceId = 0;
+        }
+        this._settings.usageMinutesSession = this._sessionMinutes;
+        if (this._pendingMonthMinutes > 0) {
+            this._settings.usageMinutesMonth += this._pendingMonthMinutes;
+            this._pendingMonthMinutes = 0;
+        }
     }
 
     _checkLimits() {
         const limit = this._settings.monthlyLimitMinutes;
         if (limit <= 0) return; // No limit set
 
-        const usage = this._settings.usageMinutesMonth;
+        const usage = this.monthlyMinutes;
         const percentage = usage / limit;
         const threshold = this._settings.limitWarningThreshold;
 
@@ -86,7 +120,7 @@ export const UsageService = GObject.registerClass({
         const limit = this._settings.monthlyLimitMinutes;
         if (limit <= 0) return false;
 
-        return this._settings.usageMinutesMonth >= limit && this._settings.hardLimitEnabled;
+        return this.monthlyMinutes >= limit && this._settings.hardLimitEnabled;
     }
 
     /**
@@ -95,7 +129,7 @@ export const UsageService = GObject.registerClass({
      */
     getUsageText() {
         const session = this._sessionMinutes;
-        const month = this._settings.usageMinutesMonth;
+        const month = this.monthlyMinutes;
         const limit = this._settings.monthlyLimitMinutes;
         const cost = this.getEstimatedCost();
 
@@ -120,7 +154,7 @@ export const UsageService = GObject.registerClass({
         const limit = this._settings.monthlyLimitMinutes;
         if (limit <= 0) return 0;
 
-        return Math.min(this._settings.usageMinutesMonth / limit, 1.0);
+        return Math.min(this.monthlyMinutes / limit, 1.0);
     }
 
     /**
@@ -128,7 +162,7 @@ export const UsageService = GObject.registerClass({
      * @returns {number}
      */
     getEstimatedCost() {
-        return this._settings.usageMinutesMonth * PRICE_PER_MINUTE;
+        return this.monthlyMinutes * PRICE_PER_MINUTE;
     }
 
     /**
@@ -144,7 +178,7 @@ export const UsageService = GObject.registerClass({
      * @returns {number}
      */
     get monthlyMinutes() {
-        return this._settings.usageMinutesMonth;
+        return this._settings.usageMinutesMonth + this._pendingMonthMinutes;
     }
 
     /**
@@ -160,11 +194,11 @@ export const UsageService = GObject.registerClass({
     resetSession() {
         this._sessionMinutes = 0;
         this._settings.usageMinutesSession = 0;
-        this.emit('usage-updated', 0, this._settings.usageMinutesMonth);
+        this.emit('usage-updated', 0, this.monthlyMinutes);
     }
 
     destroy() {
         // Save final session usage
-        this._settings.usageMinutesSession = this._sessionMinutes;
+        this.flush();
     }
 });
